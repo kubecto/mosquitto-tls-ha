@@ -1,0 +1,147 @@
+- name: Get your mosquitto if Install
+  command: mosquitto -h |grep -w version
+  register: result
+  failed_when:
+    - result.rc == 0
+    - '"stop playbook and uninstall your mosquitto" not in result.stdout'
+
+- name: Check dirs mosquitto
+  file:
+    path: "{{target_dir}}/{{item}}/rely"
+    state: directory
+    recurse: yes
+  with_items:
+    - mosquitto
+    - libwebsockets
+
+- name: mosquito Rely pkg
+  copy:
+    src: "{{item}}"
+    dest: "{{target_dir}}/mosquitto/rely"
+  with_fileglob:
+    - "{{playbook_dir}}/ansible/mosquitto/rely/*"
+
+- name: Install mosquito rely
+  shell: rpm -ivh --replacefiles --replacepkgs --nodeps {{target_dir}}/mosquitto/rely/*
+  register: rely_result
+
+- debug: msg="{{rely_result.stdout_lines}}"
+
+- name: mosquito Rely on libwebsocket
+  copy:
+    src: "{{item}}"
+    dest: "{{target_dir}}/libwebsockets"
+  with_fileglob:
+    - "{{playbook_dir}}/ansible/mosquitto/libwebsockets-1.5.1.tar.gz"
+
+- name: xf pkg
+  unarchive:
+    src: "{{ item }}"
+    dest: "{{target_dir}}/libwebsockets"
+    mode: 0755
+    remote_src: True
+  with_items:
+      - "{{target_dir}}/libwebsockets/libwebsockets-1.5.1.tar.gz"
+
+- name: make
+  shell: "cd {{target_dir}}/libwebsockets/libwebsockets-1.5.1/ && PATH={{target_dir}}/libwebsockets/libwebsockets-1.5.1:$PATH && cmake . && make && make install"
+  register: make_result
+
+- debug: msg="{{make_result.stdout_lines}}"
+
+- name: mosquitto ready
+  copy:
+    src: "{{playbook_dir}}/ansible/mosquitto/{{item}}"
+    dest: "{{target_dir}}/mosquitto/"
+  with_items:
+    - mosquitto-1.6.12.tar.gz
+
+- name: xf mosquitto
+  unarchive:
+    src: "{{ item }}"
+    dest: "{{target_dir}}/mosquitto/"
+    mode: 0755
+    remote_src: True
+  with_items:
+      - "{{target_dir}}/mosquitto/mosquitto-1.6.12.tar.gz"
+
+- name: Modify the configur
+  lineinfile:
+    path: "{{target_dir}}/mosquitto/mosquitto-1.6.12/config.mk"
+    regexp: '{{item.From}}'
+    line: '{{item.To}}'
+    state: present  
+  with_items:
+    - { From: '^WITH_SRV:=no', To: 'WITH_SRV:=yes'}
+    - { From: '^WITH_WEBSOCKETS:=no', To: 'WITH_WEBSOCKETS:=yes'}
+    - { From: '^#WITH_ADNS:=yes', To: 'WITH_ADNS:=yes'}
+
+- name: Link to the file
+  register: linkfiledout
+  shell: "ln -s /usr/local/lib/libwebsockets.so.5 /usr/lib/libwebsockets.so.5"
+  changed_when: "'libwebsockets.so.5' not in linkfiledout.stdout"
+  failed_when: false
+
+- debug:
+    msg: "{{linkfiledout.stdout}}"
+
+- name: Effective configuration
+  shell: ldconfig
+
+- name: yum remove rely
+  shell: |
+         yum -y remove gcc+ gcc-c++
+         yum -y remove c-ares c-ares-devel
+         yum -y remove libarchive
+         echo "/usr/local/lib" >> /etc/ld.so.conf
+         yum -y install libarchive
+         yum -y install c-ares c-ares-devel
+         yum -y install gcc+ gcc-c++
+  ignore_errors: yes
+
+- name: make mosquitto
+  shell: "cd {{target_dir}}/mosquitto/mosquitto-1.6.12 && PATH={{target_dir}}/mosquitto/mosquitto-1.6.12:$PATH && make && make install"
+  register: make_result
+
+- debug: msg="{{make_result.stdout_lines}}"
+
+- name: Create group
+  block:
+    - name: groupadd mosquitto
+      group:
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - mosquitto
+
+    - name: useradd -g mosquitto mosquitto
+      user:
+        name: "{{ item }}"
+        state: present
+        group: "{{ item }}"
+      with_items:
+        - mosquitto
+
+    - name: check mosquitto directory
+      file:
+        path: /var/log/mosquitto/
+        state: directory
+
+    
+    - name: check mosquitto file
+      file:
+        path: /var/log/mosquitto/mosquitto.log
+        state: touch
+        mode: 0646
+        group: '1883'
+        owner: '1883'
+
+    - name: Adjusting mosquitto master configuration Files 
+      template:
+        src: "templates/{{ item }}master.j2"
+        dest: "/etc/mosquitto/{{item}}"
+        force: yes
+      with_items:
+        - mosquitto.conf
+      when: inventory_hostname ==  groups['mosquitto-master'][0]
+

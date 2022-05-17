@@ -1,0 +1,35 @@
+- name: Adjusting mosquitto broker configuration Files
+  template:
+    src: "{{playbook_dir}}/roles/mosquitto/templates/{{ item }}.j2"
+    dest: "/etc/mosquitto/{{item}}"
+    force: yes
+  with_items:
+    - mosquitto.conf
+
+- name: Link to the file
+  register: linkfiledout
+  shell: "ln -s /usr/local/lib/libwebsockets.so.1 /usr/lib/libwebsockets.so.1"
+  changed_when: "'libwebsockets.so.1' not in linkfiledout.stdout"
+  failed_when: false
+
+- debug:
+    msg: "{{linkfiledout.stdout}}"
+
+- name: Effective configuration
+  shell: ldconfig
+
+- name: Check dirs mosquitto-certs
+  file:
+    path: /etc/mosquitto/cert
+    state: directory
+    recurse: yes
+
+- name: mosquito Rely pkg
+  copy:
+    src: "{{item}}"
+    dest: /etc/mosquitto/cert
+  with_fileglob:
+    - "{{playbook_dir}}/ansible/mosquitto/cert/*"
+
+- name: start mosquitto
+  shell: /usr/local/sbin/mosquitto -c /etc/mosquitto/mosquitto.conf -d

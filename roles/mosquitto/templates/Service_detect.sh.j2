@@ -1,0 +1,19 @@
+#!/bin/bash
+
+Checkmosquitto () {
+
+service=mosquitto
+
+if (( $(ps -ef | grep -v grep | grep $service | wc -l) > 0 ))
+then
+      echo "$service is running!!!" > /dev/null
+else
+      /usr/local/sbin/mosquitto -c /etc/mosquitto/mosquitto.conf -d
+fi
+}
+
+while
+     sleep $(echo 6-`date "+%s.%N"`%6 | bc);
+     do 
+Checkmosquitto;
+done &

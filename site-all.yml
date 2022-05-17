@@ -1,0 +1,48 @@
+- name: Welcome Install System Init
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  tasks:
+    - debug:
+        msg:
+          - "*****************************************************************"
+          - "Prepare password (include site-init-hosts.yml)"
+          - "*****************************************************************"
+- include: site-init-hosts.yml
+
+- name: Welcome Install Mosquitto
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  tasks:
+    - debug:
+        msg:
+          - "*****************************************************************"
+          - "Prepare password (include site-mosquitto.yml)"
+          - "*****************************************************************"
+- include: site-mosquitto.yml
+
+- name: Welcome Install Nginx
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  tasks:
+    - debug:
+        msg:
+          - "*****************************************************************"
+          - "Prepare password (include site-nginx.yml)"
+          - "*****************************************************************"
+- include: site-nginx.yml
+
+- name: Welcome Install Keepalived
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  tasks:
+    - debug:
+        msg:
+          - "*****************************************************************"
+          - "Prepare password (include site-keepalived.yml)"
+          - "*****************************************************************"
+- include: site-keepalived.yml
+

@@ -1,0 +1,89 @@
+---
+- name: Get your operating system version
+  shell: cat /etc/redhat-release |awk '{print $1"."$4}' |grep -w {{centos_version}}
+  register: result
+  failed_when:
+    - result.rc != 0
+    - '"Centos image version Do not conform to the" not in result.stdout'
+
+- name: Temporarily close swap
+  raw: swapoff -a
+- name: backup swap
+  raw: yes | cp /etc/fstab /etc/fstab_bak
+- name: Permanently close swap
+  lineinfile:
+    dest: /etc/fstab
+    regexp: ".*swap"
+    line: ""
+
+- name: set timezone to Asia/Shanghai
+  timezone:
+    name: Asia/Shanghai
+
+- name: increase system OS limit nofile
+  pam_limits:
+    domain: '*'
+    limit_type: "{{ item }}"
+    limit_item: nofile
+    value: 65535
+  with_items:
+    - hard
+    - soft
+
+- name: Copy rely rpm
+  copy:
+    src: "{{item}}"
+    dest: "{{target_dir}}/rely-rpm/"
+  with_fileglob:
+    - "{{playbook_dir}}/ansible/rely/*"
+
+- name: Install keepalived
+  shell: rpm -ivh --replacefiles --replacepkgs --nodeps {{target_dir}}/rely-rpm/*
+  register: rely_result
+
+- debug: msg="{{rely_result.stdout_lines}}"
+
+- name: disable useless service
+  service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: no
+  become: true
+  with_items:
+    - firewalld
+    - postfix
+  failed_when: false
+
+- name: turn off selinux from config file
+  lineinfile:
+    path: /etc/selinux/config
+    regexp: '^SELINUX='
+    line: 'SELINUX=disabled'
+  when: ansible_os_family == "RedHat"
+
+- name: turn off selinux by setenforce 0
+  command: setenforce 0
+  when: ansible_os_family == "RedHat"
+  failed_when: false
+
+- name: config logrotate.conf 
+  lineinfile:
+    path: /etc/logrotate.conf
+    regexp: 'rotate 4'
+    line: 'rotate 1'
+  when: ansible_os_family == "RedHat"
+
+- name: enable logrotate compress for RH os
+  replace:
+    path: /etc/logrotate.conf
+    regexp: '^#(.*compress.*)'
+    replace: '\1'
+  when: ansible_os_family == "RedHat"
+
+- name: delete existed machine-id whenever exist
+  file:
+    path: /etc/machine-id
+    state: absent
+
+- name: generate new machineid 
+  shell: systemd-machine-id-setup

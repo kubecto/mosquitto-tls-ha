@@ -1,0 +1,119 @@
+---
+- name: Init deploy
+  hosts: localhost
+  become: yes
+  become_user: root
+  connection: local
+  any_errors_fatal: true
+  gather_facts: no
+  tasks:
+    - debug:
+        msg:
+          - "**********************************************************************************"
+          - "================== Start ADD Mosquitto Broker  ========================="
+          - "**********************************************************************************"
+    - name:
+      wait_for:
+        delay: 3
+        timeout: 0
+    - name: Gather system time
+      setup:
+        filter: ansible_date_time
+    - name: Set start time
+      set_fact:
+        time_start: "{{ ansible_date_time.epoch }}"
+    - debug: var=ansible_date_time.date
+    - debug: var=ansible_date_time.time
+
+- name: Start ADD Mosquitto Broker
+  hosts: "{{ hosts | default('add-broker') }}"
+  gather_facts: no
+  become: yes
+  become_user: root
+  any_errors_fatal: true
+  roles:
+    - { role: set-default }
+    - { role: init-host }
+    - { role: mosquitto }
+    - { role: add-broker }
+  tasks:
+    - name: Render detection script
+      template:
+        src: "{{playbook_dir}}/roles/mosquitto/templates/{{ item }}.j2"
+        dest: "{{target_dir}}/mosquitto/{{item}}"
+        force: yes
+        mode: 0755
+      with_items:
+        - Service_detect.sh
+
+    - name: Add rc.local execute permissions
+      file:
+         path: /etc/rc.d/rc.local
+         mode: 755
+
+    - name: Add mosquitto script to rc.local
+      lineinfile:
+        dest: /etc/rc.local
+        line: |
+           cd {{target_dir}}/mosquitto/ && bash Service_detect.sh
+           bash {{target_dir}}/mosquitto/Service_detect.sh
+
+- name: Start ADD Mosquitto Broker
+  hosts: "{{ hosts | default('mosquitto-master') }}"
+  gather_facts: no
+  become: yes
+  become_user: root
+  any_errors_fatal: true
+  tasks:
+    - name: Modify the address of the broker forwarded by the Bridge Master
+      lineinfile:
+        path: /etc/mosquitto/mosquitto.conf
+        line: |
+
+           connection {{groups['add-broker'][0]}}"
+           address {{groups['add-broker-address'][0]}}:1883"
+           topic # both 2 "" "" 
+
+           connection {{groups['add-broker'][1]}}"
+           address {{groups['add-broker-address'][1]}}:1883"
+           topic # both 2 "" "" 
+
+    - name: Get running processes
+      shell: kill -9 $(ps -ef | grep -v grep | egrep -w 'mosquitto' | awk '{print $2}')
+      ignore_errors: yes
+
+- name: Add nginx reverse broker
+  hosts: "{{ hosts | default('mosquitto-nginx-keepalived') }}"
+  gather_facts: no
+  become: yes
+  become_user: root
+  any_errors_fatal: true
+  tasks:
+    - name: Add nginx reverse broker
+      lineinfile:
+        path: /etc/nginx/nginx.conf
+        state: present
+        line: "{{item}}"
+        insertafter: 'upstream cloud_native_mosquitto_broker {'
+      with_items:
+      - "      server {{groups['add-broker-address'][0]}}:8883;"
+      - "      server {{groups['add-broker-address'][1]}}:8883;"
+
+    - name: Reload nginx
+      shell: /usr/sbin/nginx -s reload
+
+- name: Add nginx reverse broker
+  hosts: "{{ hosts | default('add-broker') }}"
+  gather_facts: no
+  become: yes
+  become_user: root
+  any_errors_fatal: true
+  tasks:
+    - name: debug message
+      shell: |
+        echo "========================== 请在你新添加的broker节点按照以下操作务必进行执行"
+        echo "========================== cd /opt/pass/mosquitto/"
+        echo "========================== bash Service_detect.sh"
+      register: mosquitto_result
+
+    - debug: msg="{{mosquitto_result.stdout_lines}}"

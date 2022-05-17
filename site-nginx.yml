@@ -1,0 +1,87 @@
+---
+- name: Init deploy
+  hosts: localhost
+  become: yes
+  become_user: root
+  connection: local
+  any_errors_fatal: true
+  gather_facts: no
+  tasks:
+    - debug:
+        msg:
+          - "**********************************************************************************"
+          - "================== Start Deploying nginx ========================="
+          - "**********************************************************************************"
+    - name:
+      wait_for:
+        delay: 3
+        timeout: 0
+    - name: Gather system time
+      setup:
+        filter: ansible_date_time
+    - name: Set start time
+      set_fact:
+        time_start: "{{ ansible_date_time.epoch }}"
+    - debug: var=ansible_date_time.date
+    - debug: var=ansible_date_time.time
+
+- name: nginx install
+  hosts: "{{ hosts | default('mosquitto-nginx-keepalived') }}"
+  gather_facts: no
+  become: yes
+  become_user: root
+  any_errors_fatal: true
+  roles:
+    - { role: set-default }
+    - { role: nginx }
+    - { role: mosquitto }
+
+- name: mosquitto broker configuration Files
+  hosts: "{{ hosts | default('mosquitto-nginx-keepalived') }}"
+  gather_facts: no
+  become: yes
+  become_user: root
+  any_errors_fatal: true
+  tasks:
+    - name: Adjusting mosquitto broker configuration Files
+      template:
+        src: "{{playbook_dir}}/roles/mosquitto/templates/{{ item }}.j2"
+        dest: "/etc/mosquitto/{{item}}"
+        force: yes
+      with_items:
+        - mosquitto.conf
+
+- name: mosquitto start service
+  hosts: "{{ hosts | default('mosquitto-nginx-keepalived') }}"
+  gather_facts: no
+  become: yes
+  become_user: root
+  any_errors_fatal: true
+  tasks:
+    - name: Link to the file
+      register: linkfiledout
+      shell: "ln -s /usr/local/lib/libwebsockets.so.1 /usr/lib/libwebsockets.so.1"
+      changed_when: "'libwebsockets.so.1' not in linkfiledout.stdout"
+      failed_when: false
+
+    - debug:
+        msg: "{{linkfiledout.stdout}}"
+
+    - name: Effective configuration
+      shell: ldconfig
+
+    - name: Check dirs mosquitto-certs
+      file:
+        path: /etc/mosquitto/cert
+        state: directory
+        recurse: yes
+
+    - name: mosquito Rely pkg
+      copy:
+        src: "{{item}}"
+        dest: /etc/mosquitto/cert
+      with_fileglob:
+        - "{{playbook_dir}}/ansible/mosquitto/cert/*"
+
+    - name: start mosquitto
+      shell: /usr/local/sbin/mosquitto -c /etc/mosquitto/mosquitto.conf -d

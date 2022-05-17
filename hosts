@@ -1,0 +1,30 @@
+[mosquitto-master]
+mosquitto-bridge
+
+[mosquitto-broker]
+mosquitto-broker1
+
+[mosquitto-broker-address]
+10.101.9.64
+
+[mosquitto-nginx-keepalived]
+mosquitto-nginx-keepalived1
+mosquitto-nginx-keepalived2
+
+[keepalived-vip]
+10.101.9.88
+
+[vip-port]
+9000
+
+[add-broker]
+add-broker1
+add-broker2
+
+[add-broker-address]
+10.206.0.10
+10.206.0.8
+
+[all:vars]
+# target_dir
+target_dir = /opt/pass

@@ -1,0 +1,56 @@
+- name: Enable nic multicast
+  become: yes
+  shell: ip link set multicast on dev {{ipv4_interface}}
+
+- name: Copy keepalived rpm
+  copy:
+    src: "{{item}}"
+    dest: "{{target_dir}}/keepalived-rpm/"
+  with_fileglob:
+    - "{{playbook_dir}}/ansible/keepalived/*"
+
+- name: Install keepalived
+  shell: rpm -ivh --replacefiles --replacepkgs --nodeps {{target_dir}}/keepalived-rpm/*
+  register: keepalived_result
+
+- debug: msg="{{keepalived_result.stdout_lines}}"
+
+- name: templates keepalived1
+  template:
+    src: "templates/keepalived.conf1.j2"
+    dest: "/etc/keepalived/{{item}}"
+    force: yes
+  with_items:
+    - keepalived.conf
+  when: inventory_hostname ==  groups['mosquitto-nginx-keepalived'][0]
+
+- name: templates check nginx pid
+  template:
+    src: "templates/check_nginx_pid.sh.j2"
+    dest: "/etc/keepalived/{{item}}"
+    force: yes
+    mode: 0755
+  with_items:
+    - check_nginx_pid.sh
+
+- name: templates keepalived2
+  template:
+    src: "templates/keepalived.conf2.j2"
+    dest: "/etc/keepalived/{{item}}"
+    force: yes
+  with_items:
+    - keepalived.conf
+  when: inventory_hostname ==  groups['mosquitto-nginx-keepalived'][1]
+
+- name: remove rpm
+  shell: |
+         yum -y remove lm_sensors
+         yum -y install lm_sensors
+  ignore_errors: yes
+
+- name: start keepalived
+  systemd:
+    name: keepalived.service
+    daemon_reload: yes
+    state: started
+    enabled: yes

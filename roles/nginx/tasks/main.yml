@@ -1,0 +1,28 @@
+- name: Copy nginx rpm
+  copy:
+    src: "{{playbook_dir}}/ansible/nginx/{{item}}"
+    dest: "{{target_dir}}/nginx-rpm/"
+  with_items:
+    - nginx-1.20.2-1.el7.ngx.x86_64.rpm
+
+- name: Install nginx
+  shell: rpm -ivh --replacefiles --replacepkgs --nodeps {{target_dir}}/nginx-rpm/*
+  register: nginx_result
+
+- debug: msg="{{nginx_result.stdout_lines}}"
+
+- name: templates nginx conf
+  become: yes
+  template:
+    src: "templates/{{ item }}.j2"
+    dest: "/etc/nginx/{{item}}"
+    force: yes
+  with_items:
+    - nginx.conf
+
+- name: reload and restart nginx
+  systemd:
+    name: nginx
+    daemon_reload: yes
+    state: restarted
+    enabled: yes
