@@ -3,7 +3,7 @@
 
 ### 原理介绍
 
-这个项目1.5w的性能
+这个项目5w性能，采用nginx
 
 mosquitto-tls-ha 架构通过nginx主备及keepalived主备切换的能力来保证mosquiito是故障容错的能力
 
