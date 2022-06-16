@@ -1,17 +1,36 @@
+# 使用nginx用户
+
 user  nginx;
+
+# 你必须根据你的CPU内核设置工作进程，nginx 不会从设置超过,一些最新版本自动计算它
 worker_processes  auto;
 
-error_log  /var/log/nginx/error.log notice;
+# 用于nginx的文件描述符数,服务器上最大FD的限制通常由操作系统设置,如果你不设置 FD，那么将使用操作系统设置，默认为 2000
+worker_rlimit_nofile 100000;
+
+# 只记录严重错误日志
+error_log  /var/log/nginx/error.log crit;
+
+# nginx的进程pid文件地址
 pid        /var/run/nginx.pid;
 
-
 events {
-    worker_connections  1024;
+
+# 确定每个工作进程将服务多少个客户端
+# 应该等于 `ulimit -n ` = worker_processes
+    worker_connections  65535;
+
+# 优化为每个线程服务于多个客户端
+    use epoll;
+
+# 接受尽可能多的连接，如果设置过低可能会淹没worker_connections
+    multi_accept on;
 }
 
 stream {
     upstream cloud_native_mosquitto_broker {
       server {{groups['mosquitto-broker-address'][0]}}:8883;
+      server {{groups['mosquitto-broker-address'][1]}}:8883;
     }
     server {
         listen {{groups['vip-port'][0]}};
@@ -20,6 +39,48 @@ stream {
 }
 
 http {
+
+# 缓存关于fd的信息，经常访问的文件,可以提高性能
+    open_file_cache max=200000 inactive=20s;
+    open_file_cache_valid 30s;
+    open_file_cache_min_uses 2;
+    open_file_cache_errors on;
+
+# Sendfile从内核中在两个FD之间复制数据。
+# 比read() + write()更高效，因为需要传输数据进出用户空间。
+    sendfile on;
+
+# Tcp_nopush导致nginx尝试在一个包中发送HTTP响应头，而不是使用部分帧。这对于在调用sendfile之前添加头文件或吞吐量优化非常有用。
+    tcp_nopush on;
+
+# 数据压缩程序开启，减少需要通过网络发送的数据
+    gzip on;
+    gzip_min_length 10240;
+    gzip_comp_level 1;
+    gzip_vary on;
+    gzip_disable msie6;
+    gzip_proxied expired no-cache no-store private auth;
+    gzip_types
+        text/css
+        text/javascript
+        text/xml
+        text/plain
+        text/x-component
+        application/javascript
+        application/x-javascript
+        application/json
+        application/xml
+        application/rss+xml
+        application/atom+xml
+        font/truetype
+        font/opentype
+        application/vnd.ms-fontobject
+        image/svg+xml;  
+
+# 定义读取客户端请求正文时的非活动超时。当客户端停止传输数据时，连接将变为非活动状态。如果达到延迟，Nginx 会返回408 Request timeoutHTTP 错误。
+# 默认值60
+    client_body_timeout 10;
+ 
     include       /etc/nginx/mime.types;
     default_type  application/octet-stream;
 
@@ -27,14 +88,32 @@ http {
                       '$status $body_bytes_sent "$http_referer" '
                       '"$http_user_agent" "$http_x_forwarded_for"';
 
-    access_log  /var/log/nginx/access.log  main;
+# 允许服务器在客户端停止后关闭连接，释放套接字相关的内存
+    reset_timedout_connection on;
 
-    sendfile        on;
-    #tcp_nopush     on;
+# Nginx 关闭非活动连接的时间。当客户端停止传输数据时，连接将变为非活动状态。默认60
+    send_timeout 2;
 
-    keepalive_timeout  65;
+#  Linux的错误页面和“ Server HTTP ”响应头字段中隐藏Nginx服务器版本。这是保护 Nginx HTTP 和代理服务器的关键推荐做法之一   
+    server_tokens off;    
 
-    #gzip  on;
+# 在一个高流量的网站上，当我们达到 I/O 限制时，禁用访问日志,可增加性能，反向代理可以直接关闭access，并提高性能要求
+    #access_log  /var/log/nginx/access.log  off;
+    access_log  off;
+
+# 表示空闲的保活连接将保持打开状态的秒数。最好将空闲连接打开大约六到十秒钟。如果keepalive_timeout值设置得太高，会导致服务器超载，浪费RAM资源
+    keepalive_timeout  10;
+
+# 在单个 keepalive 连接上，keepalive_requests值表示它可以处理的最大请求数。keepalive_requests 的默认值为 100。但是，可以设置更高的值，这在使用从单个客户端发送许多请求的负载生成实用程序进行测试时往往很有用
+    keepalive_requests 100000;
+
+# 由于磁盘慢而内存快，因此目标是让尽可能多的 FastCGI 响应仅通过内存。另一方面，我们不想设置过大的缓冲区，因为它们是根据每个请求创建和调整大小的（即它不是共享内存）。
+    fastcgi_buffers 16 32k;
+    fastcgi_buffer_size 64k;
+    fastcgi_busy_buffers_size 64k;
+    proxy_buffer_size 128k;
+    proxy_buffers    4 256k;
+    proxy_busy_buffers_size 256k;
 
     include /etc/nginx/conf.d/*.conf;
 }

@@ -24,3 +24,7 @@ use_identity_as_username true
 connection {{groups['mosquitto-broker'][0]}}
 address {{groups['mosquitto-broker-address'][0]}}:1883
 topic # both 2 "" ""
+
+connection {{groups['mosquitto-broker'][1]}}
+address {{groups['mosquitto-broker-address'][1]}}:1883
+topic # both 2 "" ""

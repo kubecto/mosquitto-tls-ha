@@ -2,14 +2,16 @@
 mosquitto-bridge
 
 [mosquitto-broker]
-mosquitto-broker1
+mosquitto-nginx-keepalived1-broker1
+mosquitto-nginx-keepalived2-broker2
 
 [mosquitto-broker-address]
-10.101.9.64
+10.101.9.61
+10.101.9.62
 
 [mosquitto-nginx-keepalived]
-mosquitto-nginx-keepalived1
-mosquitto-nginx-keepalived2
+mosquitto-nginx-keepalived1-broker1
+mosquitto-nginx-keepalived2-broker2
 
 [keepalived-vip]
 10.101.9.88
